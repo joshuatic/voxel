@@ -2,10 +2,11 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Voxel v0.01</title>
+    <title>Voxel v0.02</title>
+    <link rel="icon" type="image/png" href="/static/assets/voxel.png">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <link rel="stylesheet" href="/static/styles.css?v=ui-clean-003">
+    <link rel="stylesheet" href="/static/styles.css?v=prepush-001">
 </head>
 
 <body>
@@ -13,12 +14,14 @@
         <section class="hero">
             <div>
                 <div class="brand-row">
-                    <div class="logo">V</div>
+                    <div class="logo image-logo">
+                        <img src="/static/assets/voxel.png" alt="Voxel logo">
+                    </div>
 
                     <div>
                         <h1>Voxel</h1>
                         <p class="subtitle" data-i18n="app.subtitle">
-                            v0.01 · Search plus local AI summarizer · no cloud key required.
+                            v0.02 · Search plus local AI summarizer · no cloud key required.
                         </p>
                     </div>
                 </div>
@@ -34,7 +37,7 @@
                         <span id="modelPill">Model unchecked</span>
                     </span>
 
-                    <span class="pill">Localhost: 127.0.0.1:8787</span>
+                    <span id="urlPill" class="pill">Localhost: checking...</span>
                 </div>
             </div>
 
@@ -156,7 +159,7 @@
                     <div>
                         <h2 class="card-title" data-i18n="ask.title">Ask Voxel</h2>
                         <p class="card-description" data-i18n="ask.description">
-                            Voxel searches the web, then your local model summarizes the results.
+                            Voxel routes requests through local tools, local AI, or web search when needed.
                         </p>
                     </div>
                 
@@ -283,8 +286,17 @@
                         </div>
                     </div>
 
-                    <details>
-                        <summary>Debug JSON</summary>
+                    <details id="debugDetails" class="debug-details">
+                        <summary>Debug</summary>
+
+                        <div id="debugSummary" class="debug-summary">
+                            <div class="empty">No debug data yet.</div>
+                        </div>
+
+                        <div class="debug-json-header">
+                            <span>Raw JSON</span>
+                        </div>
+
                         <pre id="debugOutput">No request yet.</pre>
                     </details>
                 </div>
@@ -363,6 +375,15 @@
                         </span>
 
                         <input id="preferOfflineToggle" type="checkbox" onchange="saveSettingsFromUi()">
+                    </label>
+
+                    <label class="toggle-row">
+                        <span>
+                            <strong>Low Resource Mode</strong>
+                            <small>Reduces startup/load by skipping Whisper preload and preferring smaller local models.</small>
+                        </span>
+
+                        <input id="lowResourceToggle" type="checkbox" onchange="saveLowResourceModeFromUi()">
                     </label>
                 </section>
 
@@ -456,13 +477,169 @@
                         <button class="secondary" onclick="checkHealth()">Check Server</button>
                         <button class="secondary" onclick="checkModel()">Check Model</button>
                         <button class="secondary" onclick="loadVoices()">Reload Voices</button>
+                        <button class="secondary" onclick="resetInitialSetup()">Reset Initial Setup</button>
+                    </div>
+                </section>
+
+                <section class="settings-section">
+                    <h3>Memory</h3>
+
+                    <div class="settings-field">
+                        <div class="settings-field-header">
+                            <label for="memoryContentInput">Add Memory</label>
+                        </div>
+
+                        <textarea
+                            id="memoryContentInput"
+                            class="settings-textarea"
+                            placeholder="Example: Voxel is a local-first AI assistant."
+                        ></textarea>
+
+                        <div class="memory-create-row">
+                            <input
+                                id="memoryTypeInput"
+                                class="api-key-input"
+                                type="text"
+                                value="note"
+                                placeholder="Memory type"
+                            >
+
+                            <button id="memoryCreateButton" class="secondary" type="button" onclick="createMemoryFromUi()">Add Memory</button>
+                        </div>
+
+                        <p class="settings-help">
+                            Memories are stored locally and can be viewed, disabled, searched, or deleted.
+                        </p>
+                    </div>
+
+                    <div class="settings-field">
+                        <div class="settings-field-header">
+                            <label for="memorySearchInput">Search Memory</label>
+                            <button class="micro-button" onclick="loadMemories()">Reload</button>
+                        </div>
+
+                        <div class="memory-search-row">
+                            <input
+                                id="memorySearchInput"
+                                class="api-key-input"
+                                type="text"
+                                placeholder="Search memories..."
+                                onkeydown="handleMemorySearchKey(event)"
+                            >
+
+                            <button id="memorySearchButton" class="secondary" type="button" onclick="searchMemoriesFromUi()">Search</button>
+                            <button id="memoryClearSearchButton" class="secondary" type="button" onclick="clearMemorySearch()">Clear</button>
+                        </div>
+                    </div>
+
+                    <div id="memorySearchStatus" class="memory-search-status">
+                        Showing all memories.
+                    </div>
+
+                    <div id="memoryList" class="memory-list">
+                        <div class="empty">No memories loaded yet.</div>
+                    </div>
+
+                    <div class="settings-actions">
+                        <button class="secondary" onclick="loadMemories()">Refresh Memories</button>
+                        <button id="memoryClearAllButton" class="secondary danger-button" type="button" onclick="clearAllMemoriesFromUi()">Clear All Memories</button>
                     </div>
                 </section>
             </div>
         </section>
     </div>
+    <div id="setupBackdrop" class="modal-backdrop hidden">
+        <section class="setup-modal">
+            <div class="setup-header">
+                <div>
+                    <h2>Welcome to Voxel</h2>
+                    <p>Let’s set up your local-first assistant.</p>
+                </div>
+
+                <span class="setup-badge">Initial Setup</span>
+            </div>
+
+            <div class="setup-steps">
+                <div class="setup-step active" data-setup-step="1">
+                    <h3>1. Local-first assistant</h3>
+                    <p>
+                        Voxel runs on your computer through a local web dashboard.
+                        It can use local models, local speech, custom voices, and optional API providers.
+                    </p>
+
+                    <div class="setup-note">
+                        Voxel does not require a cloud API key by default.
+                    </div>
+                </div>
+
+                <div class="setup-step" data-setup-step="2">
+                    <h3>2. Runtime check</h3>
+
+                    <div id="setupChecks" class="setup-check-list">
+                        <div class="empty">Checking setup...</div>
+                    </div>
+                </div>
+
+                <div class="setup-step" data-setup-step="3">
+                    <h3>3. Assistant mode</h3>
+
+                    <label class="toggle-row">
+                        <span>
+                            <strong>Prefer offline/local mode</strong>
+                            <small>Use local answers when possible. You can change this later in Settings.</small>
+                        </span>
+
+                        <input id="setupPreferOfflineToggle" type="checkbox">
+                    </label>
+
+                    <label class="toggle-row">
+                        <span>
+                            <strong>Auto submit voice commands</strong>
+                            <small>After push-to-talk transcription, automatically ask Voxel.</small>
+                        </span>
+
+                        <input id="setupAutoSubmitVoiceToggle" type="checkbox" checked>
+                    </label>
+                </div>
+
+                <div class="setup-step" data-setup-step="4">
+                    <h3>4. Voice</h3>
+
+                    <p>
+                        Choose the voice Voxel should use for speech output.
+                    </p>
+
+                    <select id="setupVoiceSelect" class="settings-select">
+                        <option value="">Loading voices...</option>
+                    </select>
+
+                    <p class="settings-help">
+                        You can import more voice packs later from Settings.
+                    </p>
+                </div>
+
+                <div class="setup-step" data-setup-step="5">
+                    <h3>5. Ready</h3>
+
+                    <p>
+                        Setup is ready to finish. You can change all of this later in Settings.
+                    </p>
+
+                    <div class="setup-note">
+                        Recommended first test: ask <strong>what can you do?</strong>
+                    </div>
+                </div>
+            </div>
+
+            <div class="setup-actions">
+                <button id="setupBackButton" class="secondary" onclick="previousSetupStep()">Back</button>
+                <button id="setupNextButton" onclick="nextSetupStep()">Next</button>
+                <button id="setupFinishButton" class="hidden" onclick="finishInitialSetup()">Finish</button>
+            </div>
+        </section>
+    </div>
     <div id="toast" class="toast"></div>
 
-    <script src="/static/app.js?v=voice-piper-002"></script>
+    <script src="/static/app.js?v=prepush-001"></script>
 </body>
 </html>

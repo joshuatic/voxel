@@ -1,5 +1,5 @@
 {
-  "app.subtitle": "v0.01 · Search plus local AI summarizer · no cloud key required.",
+  "app.subtitle": "v0.02 · Search plus local AI summarizer · no cloud key required.",
   "status.title": "System Status",
   "status.description": "Quick diagnostics for the local Voxel runtime.",
   "status.activeModel": "Active Model",

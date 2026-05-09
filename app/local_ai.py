@@ -9,6 +9,7 @@ from app.config import (
     LOCAL_AI_TEMPERATURE,
 )
 from app.personality import get_personality
+from app.resource_mode import is_low_resource_mode_enabled, pick_smallest_model
 
 _llm: Llama | None = None
 _loaded_model_path: Path | None = None
@@ -53,7 +54,16 @@ def get_selected_model_path() -> Path | None:
     Returns the path for the selected model.
     """
     if _selected_model_name == "auto":
-        return get_auto_model_path()
+        models = list_available_models()
+
+        if not models:
+            return None
+
+        if is_low_resource_mode_enabled():
+            selected = pick_smallest_model(models)
+            return Path(selected["path"]) if selected else None
+
+        return Path(models[0]["path"])
 
     candidate = MODELS_DIR / _selected_model_name
 

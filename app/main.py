@@ -1,5 +1,6 @@
 import logging
 import time
+import os
 
 from fastapi import FastAPI, Query
 from fastapi.responses import FileResponse, JSONResponse
@@ -49,14 +50,34 @@ from app.voice_import import import_voice_zip
 from app.command_router import route_command
 from app.network import internet_available
 from app.cache_manager import get_cache_status, clear_cache
+from app.setup_state import (
+    get_setup_status,
+    set_setup_complete,
+)
+from app.resource_mode import (
+    get_resource_mode_status,
+    set_low_resource_mode_enabled,
+    is_low_resource_mode_enabled,
+)
+from app.memory import (
+    create_memory,
+    list_memories,
+    search_memories,
+    set_memory_enabled,
+    delete_memory,
+    clear_memories,
+)
 
 setup_logging()
 initialize_storage()
 
 logger = logging.getLogger("voxel")
 try:
-    preload_whisper_model()
-    logger.info("Whisper transcription model preloaded.")
+    if is_low_resource_mode_enabled():
+        logger.info("Whisper preload skipped because low resource mode is enabled.")
+    else:
+        preload_whisper_model()
+        logger.info("Whisper transcription model preloaded.")
 except Exception as error:
     logger.warning("Whisper preload failed: %s", error)
 
@@ -100,6 +121,22 @@ class ActiveProviderRequest(BaseModel):
     provider_id: str
 class CacheClearRequest(BaseModel):
     cache_id: str
+class ResourceModeRequest(BaseModel):
+    low_resource_mode: bool
+class MemoryCreateRequest(BaseModel):
+    content: str
+    memory_type: str = "note"
+    source: str = "user"
+    enabled: bool = True
+class MemorySearchRequest(BaseModel):
+    query: str
+    include_disabled: bool = False
+    limit: int = 25
+class MemoryEnabledRequest(BaseModel):
+    memory_id: int
+    enabled: bool
+class MemoryDeleteRequest(BaseModel):
+    memory_id: int
 
 @app.get("/")
 async def home():
@@ -111,6 +148,7 @@ async def health():
         "ok": True,
         "name": APP_NAME,
         "version": APP_VERSION,
+        "url": os.environ.get("VOXEL_URL", "http://127.0.0.1:8787"),
         "status": "online",
         "mode": "search-local-ai",
     }
@@ -472,3 +510,231 @@ async def cache_clear(payload: CacheClearRequest):
         logger.exception("Cache clear failed.")
 
         return build_error_response(error)
+
+@app.get("/setup/status")
+async def setup_status():
+    return {
+        "ok": True,
+        **get_setup_status(),
+    }
+
+
+@app.post("/setup/complete")
+async def setup_complete():
+    try:
+        set_setup_complete(True)
+
+        logger.info("Initial setup marked complete.")
+
+        return {
+            "ok": True,
+            **get_setup_status(),
+        }
+
+    except Exception as error:
+        logger.exception("Failed to complete setup.")
+
+        return JSONResponse(
+            status_code=500,
+            content={
+                "ok": False,
+                "error": str(error),
+                "error_type": type(error).__name__,
+            },
+        )
+
+
+@app.post("/setup/reset")
+async def setup_reset():
+    try:
+        set_setup_complete(False)
+
+        logger.info("Initial setup reset.")
+
+        return {
+            "ok": True,
+            **get_setup_status(),
+        }
+
+    except Exception as error:
+        logger.exception("Failed to reset setup.")
+
+        return JSONResponse(
+            status_code=500,
+            content={
+                "ok": False,
+                "error": str(error),
+                "error_type": type(error).__name__,
+            },
+        )
+
+@app.get("/resource-mode/status")
+async def resource_mode_status():
+    return {
+        "ok": True,
+        **get_resource_mode_status(),
+    }
+
+
+@app.post("/resource-mode/set")
+async def resource_mode_set(payload: ResourceModeRequest):
+    try:
+        set_low_resource_mode_enabled(payload.low_resource_mode)
+
+        logger.info("Low resource mode updated: %s", payload.low_resource_mode)
+
+        return {
+            "ok": True,
+            **get_resource_mode_status(),
+        }
+
+    except Exception as error:
+        logger.exception("Failed to update low resource mode.")
+
+        return JSONResponse(
+            status_code=500,
+            content={
+                "ok": False,
+                "error": str(error),
+                "error_type": type(error).__name__,
+            },
+        )
+
+@app.get("/memory/list")
+async def memory_list(include_disabled: bool = False, limit: int = 100):
+    return {
+        "ok": True,
+        "memories": list_memories(
+            include_disabled=include_disabled,
+            limit=limit,
+        ),
+    }
+
+
+@app.post("/memory/create")
+async def memory_create(payload: MemoryCreateRequest):
+    try:
+        memory = create_memory(
+            content=payload.content,
+            memory_type=payload.memory_type,
+            source=payload.source,
+            enabled=payload.enabled,
+        )
+
+        logger.info("Memory created: id=%s type=%s", memory["id"], memory["memory_type"])
+
+        return {
+            "ok": True,
+            "memory": memory,
+        }
+
+    except Exception as error:
+        logger.exception("Failed to create memory.")
+
+        return JSONResponse(
+            status_code=500,
+            content={
+                "ok": False,
+                "error": str(error),
+                "error_type": type(error).__name__,
+            },
+        )
+
+
+@app.post("/memory/search")
+async def memory_search(payload: MemorySearchRequest):
+    try:
+        return {
+            "ok": True,
+            "memories": search_memories(
+                query=payload.query,
+                include_disabled=payload.include_disabled,
+                limit=payload.limit,
+            ),
+        }
+
+    except Exception as error:
+        logger.exception("Failed to search memories.")
+
+        return JSONResponse(
+            status_code=500,
+            content={
+                "ok": False,
+                "error": str(error),
+                "error_type": type(error).__name__,
+            },
+        )
+
+
+@app.post("/memory/enabled")
+async def memory_enabled(payload: MemoryEnabledRequest):
+    try:
+        memory = set_memory_enabled(
+            memory_id=payload.memory_id,
+            enabled=payload.enabled,
+        )
+
+        return {
+            "ok": True,
+            "memory": memory,
+        }
+
+    except Exception as error:
+        logger.exception("Failed to update memory enabled state.")
+
+        return JSONResponse(
+            status_code=500,
+            content={
+                "ok": False,
+                "error": str(error),
+                "error_type": type(error).__name__,
+            },
+        )
+
+
+@app.post("/memory/delete")
+async def memory_delete(payload: MemoryDeleteRequest):
+    try:
+        memory = delete_memory(payload.memory_id)
+
+        return {
+            "ok": True,
+            "deleted": memory,
+        }
+
+    except Exception as error:
+        logger.exception("Failed to delete memory.")
+
+        return JSONResponse(
+            status_code=500,
+            content={
+                "ok": False,
+                "error": str(error),
+                "error_type": type(error).__name__,
+            },
+        )
+
+
+@app.post("/memory/clear")
+async def memory_clear():
+    try:
+        deleted_count = clear_memories()
+
+        logger.info("All memories cleared: count=%s", deleted_count)
+
+        return {
+            "ok": True,
+            "deleted_count": deleted_count,
+        }
+
+    except Exception as error:
+        logger.exception("Failed to clear memories.")
+
+        return JSONResponse(
+            status_code=500,
+            content={
+                "ok": False,
+                "error": str(error),
+                "error_type": type(error).__name__,
+            },
+        )

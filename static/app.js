@@ -7,11 +7,16 @@ let currentModels = [];
 let currentVoices = [];
 let selectedVoiceId = "male1-genam";
 
+let setupCurrentStep = 1;
+let setupTotalSteps = 5;
+let setupStatus = null;
+
 let currentLanguage = localStorage.getItem("voxel.language") || "en-US";
 let translations = {};
 
 let currentPhraseAudio = null;
 let currentTtsAudio = null;
+let isSpeakingAnswer = false;
 
 let isRecordingVoice = false;
 let currentAudioStream = null;
@@ -30,6 +35,8 @@ let voxelSettings = {
     showDebugPanel: true,
     preferOfflineMode: false
 };
+
+let lowResourceMode = false;
 
 searchBox.addEventListener("keydown", function (event) {
     if (event.key === "Enter") {
@@ -51,6 +58,9 @@ window.addEventListener("load", async function () {
     await loadAudioInputs();
     await loadApiKeyStatus();
     await loadCacheStatus();
+    await loadSetupStatus();
+    await loadLowResourceMode();
+    await loadMemories();
 });
 
 document.addEventListener("click", function (event) {
@@ -103,6 +113,644 @@ async function postRequest(url, options = {}) {
         method: "POST",
         ...options
     });
+}
+
+async function loadSetupStatus() {
+    try {
+        const response = await fetch("/setup/status");
+        const data = await readJsonResponse(response);
+
+        if (!data.ok) {
+            console.warn("Could not load setup status:", data);
+            return;
+        }
+
+        setupStatus = data;
+
+        populateSetupChecks(data);
+        populateSetupVoiceSelect(data);
+
+        if (!data.setup_complete) {
+            openInitialSetup();
+        }
+    } catch (error) {
+        console.warn("Could not load setup status:", error);
+    }
+}
+
+function openInitialSetup() {
+    setupCurrentStep = 1;
+    updateSetupStep();
+
+    const backdrop = document.getElementById("setupBackdrop");
+
+    if (backdrop) {
+        backdrop.classList.remove("hidden");
+    }
+}
+
+function closeInitialSetup() {
+    const backdrop = document.getElementById("setupBackdrop");
+
+    if (backdrop) {
+        backdrop.classList.add("hidden");
+    }
+}
+
+let currentMemories = [];
+let currentMemorySearchQuery = "";
+
+async function loadMemories() {
+    try {
+        currentMemorySearchQuery = "";
+
+        const response = await fetch("/memory/list?include_disabled=true&limit=100");
+        const data = await readJsonResponse(response);
+
+        if (!data.ok) {
+            showToast(data.error || "Could not load memories.");
+            return;
+        }
+
+        currentMemories = data.memories || [];
+        renderMemoryList(currentMemories);
+        setMemorySearchStatus(`Showing all memories. ${currentMemories.length} item(s).`);
+    } catch (error) {
+        console.warn("Could not load memories:", error);
+        showToast("Could not load memories.");
+    }
+}
+
+async function refreshMemoryView() {
+    if (currentMemorySearchQuery) {
+        const searchInput = document.getElementById("memorySearchInput");
+
+        if (searchInput) {
+            searchInput.value = currentMemorySearchQuery;
+        }
+
+        await searchMemoriesFromUi();
+        return;
+    }
+
+    await loadMemories();
+}
+
+async function createMemoryFromUi() {
+    const contentInput = document.getElementById("memoryContentInput");
+    const typeInput = document.getElementById("memoryTypeInput");
+
+    if (!contentInput) {
+        return;
+    }
+
+    const content = contentInput.value.trim();
+    const memoryType = typeInput && typeInput.value.trim()
+        ? typeInput.value.trim()
+        : "note";
+
+    if (!content) {
+        showToast("Type a memory first.");
+        return;
+    }
+
+    try {
+        const response = await fetch("/memory/create", {
+            method: "POST",
+            headers: JSON_HEADERS,
+            body: JSON.stringify({
+                content: content,
+                memory_type: memoryType,
+                source: "user",
+                enabled: true
+            })
+        });
+
+        const data = await readJsonResponse(response);
+
+        if (!data.ok) {
+            showToast(data.error || "Could not create memory.");
+            return;
+        }
+
+        contentInput.value = "";
+        showToast("Memory added.");
+        await refreshMemoryView();
+    } catch (error) {
+        console.warn("Could not create memory:", error);
+        showToast("Could not create memory.");
+    }
+}
+
+async function searchMemoriesFromUi() {
+    const searchInput = document.getElementById("memorySearchInput");
+
+    if (!searchInput) {
+        return;
+    }
+
+    const query = searchInput.value.trim();
+
+    if (!query) {
+        await loadMemories();
+        return;
+    }
+
+    try {
+        currentMemorySearchQuery = query;
+
+        const response = await fetch("/memory/search", {
+            method: "POST",
+            headers: JSON_HEADERS,
+            body: JSON.stringify({
+                query: query,
+                include_disabled: true,
+                limit: 100
+            })
+        });
+
+        const data = await readJsonResponse(response);
+
+        if (!data.ok) {
+            showToast(data.error || "Could not search memories.");
+            return;
+        }
+
+        currentMemories = data.memories || [];
+        renderMemoryList(currentMemories, query);
+
+        setMemorySearchStatus(`Search: "${query}" · ${currentMemories.length} result(s).`);
+        showToast(`Found ${currentMemories.length} memory item(s).`);
+    } catch (error) {
+        console.warn("Could not search memories:", error);
+        showToast("Could not search memories.");
+    }
+}
+
+function clearMemorySearch() {
+    const searchInput = document.getElementById("memorySearchInput");
+
+    if (searchInput) {
+        searchInput.value = "";
+    }
+
+    currentMemorySearchQuery = "";
+    loadMemories();
+}
+
+function handleMemorySearchKey(event) {
+    if (event.key === "Enter") {
+        event.preventDefault();
+        searchMemoriesFromUi();
+    }
+}
+
+function setMemorySearchStatus(message) {
+    const status = document.getElementById("memorySearchStatus");
+
+    if (status) {
+        status.textContent = message;
+    }
+}
+
+async function setMemoryEnabledFromUi(memoryId, enabled) {
+    try {
+        const response = await fetch("/memory/enabled", {
+            method: "POST",
+            headers: JSON_HEADERS,
+            body: JSON.stringify({
+                memory_id: Number(memoryId),
+                enabled: Boolean(enabled)
+            })
+        });
+
+        const data = await readJsonResponse(response);
+
+        if (!data.ok) {
+            showToast(data.error || "Could not update memory.");
+            return;
+        }
+
+        showToast(enabled ? "Memory enabled." : "Memory disabled.");
+        await refreshMemoryView();
+    } catch (error) {
+        console.warn("Could not update memory:", error);
+        showToast("Could not update memory.");
+    }
+}
+
+async function deleteMemoryFromUi(memoryId) {
+    const confirmed = confirm(`Delete memory #${memoryId}?`);
+
+    if (!confirmed) {
+        return;
+    }
+
+    try {
+        const response = await fetch("/memory/delete", {
+            method: "POST",
+            headers: JSON_HEADERS,
+            body: JSON.stringify({
+                memory_id: Number(memoryId)
+            })
+        });
+
+        const data = await readJsonResponse(response);
+
+        if (!data.ok) {
+            showToast(data.error || "Could not delete memory.");
+            return;
+        }
+
+        showToast("Memory deleted.");
+        await refreshMemoryView();
+    } catch (error) {
+        console.warn("Could not delete memory:", error);
+        showToast("Could not delete memory.");
+    }
+}
+
+async function clearAllMemoriesFromUi() {
+    const confirmed = confirm("Clear all memories? This cannot be undone.");
+
+    if (!confirmed) {
+        return;
+    }
+
+    try {
+        const response = await fetch("/memory/clear", {
+            method: "POST"
+        });
+
+        const data = await readJsonResponse(response);
+
+        if (!data.ok) {
+            showToast(data.error || "Could not clear memories.");
+            return;
+        }
+
+        currentMemorySearchQuery = "";
+
+        const searchInput = document.getElementById("memorySearchInput");
+
+        if (searchInput) {
+            searchInput.value = "";
+        }
+
+        showToast(`Cleared ${data.deleted_count || 0} memory item(s).`);
+        await loadMemories();
+    } catch (error) {
+        console.warn("Could not clear memories:", error);
+        showToast("Could not clear memories.");
+    }
+}
+
+function renderMemoryList(memories, highlightQuery = "") {
+    const container = document.getElementById("memoryList");
+
+    if (!container) {
+        return;
+    }
+
+    if (!memories || memories.length === 0) {
+        container.innerHTML = `<div class="empty">No memories found.</div>`;
+        return;
+    }
+
+    container.innerHTML = "";
+
+    for (const memory of memories) {
+        const item = document.createElement("div");
+        item.className = memory.enabled ? "memory-item" : "memory-item disabled";
+
+        const highlightedContent = renderMemoryContent(
+            memory.content || "",
+            highlightQuery
+        );
+
+        item.innerHTML = `
+            <div class="memory-main">
+                <div class="memory-meta-row">
+                    <span class="memory-id">#${escapeHtml(memory.id)}</span>
+                    <span class="memory-type">${escapeHtml(memory.memory_type || "note")}</span>
+                    <span class="memory-source">${escapeHtml(memory.source || "user")}</span>
+                    <span class="memory-state">${memory.enabled ? "Enabled" : "Disabled"}</span>
+                </div>
+
+                <p>${highlightedContent}</p>
+
+                <small>
+                    Created: ${escapeHtml(formatMemoryDate(memory.created_at))}
+                    · Updated: ${escapeHtml(formatMemoryDate(memory.updated_at))}
+                </small>
+            </div>
+
+            <div class="memory-actions">
+                <button
+                    class="micro-button"
+                    onclick="setMemoryEnabledFromUi(${Number(memory.id)}, ${memory.enabled ? "false" : "true"})"
+                >
+                    ${memory.enabled ? "Disable" : "Enable"}
+                </button>
+
+                <button
+                    class="micro-button danger-button"
+                    onclick="deleteMemoryFromUi(${Number(memory.id)})"
+                >
+                    Delete
+                </button>
+            </div>
+        `;
+
+        container.appendChild(item);
+    }
+}
+
+function renderMemoryContent(content, highlightQuery) {
+    const escapedContent = escapeHtml(content);
+
+    if (!highlightQuery) {
+        return escapedContent;
+    }
+
+    const trimmedQuery = highlightQuery.trim();
+
+    if (!trimmedQuery) {
+        return escapedContent;
+    }
+
+    const escapedQuery = escapeRegExp(trimmedQuery);
+    const regex = new RegExp(`(${escapedQuery})`, "gi");
+
+    return escapedContent.replace(regex, `<mark class="memory-highlight">$1</mark>`);
+}
+
+function escapeRegExp(value) {
+    return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function formatMemoryDate(value) {
+    if (!value) {
+        return "unknown";
+    }
+
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+        return String(value);
+    }
+
+    return date.toLocaleString();
+}
+
+function updateSetupStep() {
+    document.querySelectorAll(".setup-step").forEach((step) => {
+        const stepNumber = Number(step.getAttribute("data-setup-step"));
+        step.classList.toggle("active", stepNumber === setupCurrentStep);
+    });
+
+    const backButton = document.getElementById("setupBackButton");
+    const nextButton = document.getElementById("setupNextButton");
+    const finishButton = document.getElementById("setupFinishButton");
+
+    if (backButton) {
+        backButton.disabled = setupCurrentStep <= 1;
+    }
+
+    if (nextButton) {
+        nextButton.classList.toggle("hidden", setupCurrentStep >= setupTotalSteps);
+    }
+
+    if (finishButton) {
+        finishButton.classList.toggle("hidden", setupCurrentStep < setupTotalSteps);
+    }
+}
+
+function nextSetupStep() {
+    if (setupCurrentStep < setupTotalSteps) {
+        setupCurrentStep += 1;
+        updateSetupStep();
+    }
+}
+
+function previousSetupStep() {
+    if (setupCurrentStep > 1) {
+        setupCurrentStep -= 1;
+        updateSetupStep();
+    }
+}
+
+function populateSetupChecks(data) {
+    const container = document.getElementById("setupChecks");
+
+    if (!container) {
+        return;
+    }
+
+    const checks = data.checks || {};
+    const model = data.model || {};
+    const voices = data.voices || [];
+
+    const items = [
+        {
+            label: "Local model",
+            ok: Boolean(checks.has_model),
+            detail: checks.has_model
+                ? `Found: ${model.selected_model || "auto"}`
+                : "No GGUF model found in models/"
+        },
+        {
+            label: "Voices",
+            ok: Boolean(checks.has_voices),
+            detail: checks.has_voices
+                ? `${voices.length} voice definition(s) found`
+                : "No voices found in voices/"
+        },
+        {
+            label: "Dashboard",
+            ok: true,
+            detail: "Local web UI is running"
+        }
+    ];
+
+    container.innerHTML = "";
+
+    for (const item of items) {
+        const row = document.createElement("div");
+        row.className = item.ok ? "setup-check good" : "setup-check warning";
+
+        row.innerHTML = `
+            <div>
+                <strong>${escapeHtml(item.label)}</strong>
+                <small>${escapeHtml(item.detail)}</small>
+            </div>
+
+            <span>${item.ok ? "Ready" : "Missing"}</span>
+        `;
+
+        container.appendChild(row);
+    }
+}
+
+function populateSetupVoiceSelect(data) {
+    const select = document.getElementById("setupVoiceSelect");
+
+    if (!select) {
+        return;
+    }
+
+    const voices = data.voices || [];
+    const selectedVoiceId = data.selected_voice_id || "";
+
+    select.innerHTML = "";
+
+    if (!voices.length) {
+        const option = document.createElement("option");
+        option.value = "";
+        option.textContent = "No voices found";
+        select.appendChild(option);
+        return;
+    }
+
+    for (const voice of voices) {
+        const option = document.createElement("option");
+        option.value = voice.id;
+        option.textContent = `${voice.display_name} — ${describeVoice(voice)}`;
+
+        if (voice.id === selectedVoiceId) {
+            option.selected = true;
+        }
+
+        select.appendChild(option);
+    }
+}
+
+async function finishInitialSetup() {
+    const setupPreferOfflineToggle = document.getElementById("setupPreferOfflineToggle");
+    const setupAutoSubmitVoiceToggle = document.getElementById("setupAutoSubmitVoiceToggle");
+    const setupVoiceSelect = document.getElementById("setupVoiceSelect");
+
+    voxelSettings.preferOfflineMode = setupPreferOfflineToggle
+        ? Boolean(setupPreferOfflineToggle.checked)
+        : false;
+
+    voxelSettings.autoSubmitVoiceCommand = setupAutoSubmitVoiceToggle
+        ? Boolean(setupAutoSubmitVoiceToggle.checked)
+        : true;
+
+    saveSettingsToStorage();
+    applySettingsToUi();
+
+    if (setupVoiceSelect && setupVoiceSelect.value) {
+        await selectVoice(setupVoiceSelect.value);
+    }
+
+    try {
+        const response = await fetch("/setup/complete", {
+            method: "POST"
+        });
+
+        const data = await readJsonResponse(response);
+
+        if (!data.ok) {
+            showToast(data.error || "Could not finish setup.");
+            return;
+        }
+
+        closeInitialSetup();
+        showToast("Voxel setup complete.");
+    } catch (error) {
+        console.warn("Could not complete setup:", error);
+        showToast("Could not finish setup.");
+    }
+}
+
+async function resetInitialSetup() {
+    const confirmed = confirm("Reset initial setup? The setup wizard will show again.");
+
+    if (!confirmed) {
+        return;
+    }
+
+    try {
+        const response = await fetch("/setup/reset", {
+            method: "POST"
+        });
+
+        const data = await readJsonResponse(response);
+
+        if (!data.ok) {
+            showToast(data.error || "Could not reset setup.");
+            return;
+        }
+
+        showToast("Setup reset.");
+        await loadSetupStatus();
+    } catch (error) {
+        console.warn("Could not reset setup:", error);
+        showToast("Could not reset setup.");
+    }
+}
+
+async function loadLowResourceMode() {
+    try {
+        const response = await fetch("/resource-mode/status");
+        const data = await readJsonResponse(response);
+
+        if (!data.ok) {
+            return;
+        }
+
+        lowResourceMode = Boolean(data.low_resource_mode);
+
+        const toggle = document.getElementById("lowResourceToggle");
+
+        if (toggle) {
+            toggle.checked = lowResourceMode;
+        }
+    } catch (error) {
+        console.warn("Could not load low resource mode:", error);
+    }
+}
+
+async function saveLowResourceModeFromUi() {
+    const toggle = document.getElementById("lowResourceToggle");
+    const enabled = toggle ? Boolean(toggle.checked) : false;
+
+    try {
+        const response = await fetch("/resource-mode/set", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                low_resource_mode: enabled
+            })
+        });
+
+        const data = await readJsonResponse(response);
+
+        if (!data.ok) {
+            showToast(data.error || "Could not update low resource mode.");
+            return;
+        }
+
+        lowResourceMode = Boolean(data.low_resource_mode);
+
+        if (lowResourceMode) {
+            voxelSettings.autoSpeakOnSearch = false;
+            saveSettingsToStorage();
+            applySettingsToUi();
+            showToast("Low Resource Mode enabled.");
+        } else {
+            showToast("Low Resource Mode disabled.");
+        }
+
+        await checkModel();
+    } catch (error) {
+        console.warn("Could not update low resource mode:", error);
+        showToast("Could not update low resource mode.");
+    }
 }
 
 async function loadCacheStatus() {
@@ -761,12 +1409,18 @@ async function playAudioBlob(blob, label, kind = "phrase") {
 
     if (kind === "tts") {
         currentTtsAudio = audio;
+        isSpeakingAnswer = true;
     } else {
         currentPhraseAudio = audio;
     }
 
     audio.onplay = function () {
         setVoiceActive(true, label);
+
+        if (kind === "tts") {
+            isSpeakingAnswer = true;
+            setMicButtonState(isRecordingVoice);
+        }
     };
 
     audio.onended = function () {
@@ -775,6 +1429,8 @@ async function playAudioBlob(blob, label, kind = "phrase") {
 
         if (kind === "tts") {
             currentTtsAudio = null;
+            isSpeakingAnswer = false;
+            setMicButtonState(isRecordingVoice);
         } else {
             currentPhraseAudio = null;
         }
@@ -786,14 +1442,16 @@ async function playAudioBlob(blob, label, kind = "phrase") {
 
         if (kind === "tts") {
             currentTtsAudio = null;
+            isSpeakingAnswer = false;
+            setMicButtonState(isRecordingVoice);
         } else {
             currentPhraseAudio = null;
         }
 
         showToast("Audio playback failed.");
     };
-
     await audio.play();
+    setMicButtonState(isRecordingVoice);
 }
 
 function stopVoicePhrase() {
@@ -819,25 +1477,60 @@ function stopSpeaking() {
         currentPhraseAudio = null;
     }
 
+    isSpeakingAnswer = false;
     setVoiceActive(false, "Voice idle");
 }
 
 function cleanTextForSpeech(text) {
-    return String(text)
-        // Remove citation tags like [1], [2], [3]
+    let cleaned = String(text || "");
+
+    cleaned = cleaned
+        // Remove code fences.
+        .replace(/```[\w-]*\n?/g, "")
+        .replace(/```/g, "")
+
+        // Inline code.
+        .replace(/`([^`]+)`/g, "$1")
+
+        // Markdown links.
+        .replace(/\[([^\]]+)]\(([^)]+)\)/g, "$1")
+
+        // Citation tags like [1], [2], [3].
         .replace(/\s*\[\d+]/g, "")
 
-        // Remove repeated whitespace
-        .replace(/[ \t]+/g, " ")
+        // Headings.
+        .replace(/^#{1,6}\s+/gm, "")
 
-        // Make line breaks speak more naturally
+        // Lists.
+        .replace(/^\s*[-*+]\s+/gm, "")
+        .replace(/^\s*\d+\.\s+/gm, "")
+
+        // Blockquotes.
+        .replace(/^\s*>\s?/gm, "");
+
+    // Strip Markdown emphasis markers globally.
+    // This is intentionally blunt because TTS should never read Markdown symbols.
+    cleaned = cleaned
+        .replace(/\*\*/g, "")
+        .replace(/__/g, "")
+        .replace(/\*/g, "")
+        .replace(/_/g, "");
+
+    cleaned = cleaned
+        // Operators.
+        .replace(/\s*=\s*/g, " equals ")
+        .replace(/\s*\+\s*/g, " plus ")
+        .replace(/\s*-\s*/g, " minus ")
+        .replace(/\s*\/\s*/g, " divided by ")
+
+        // Line/spacing cleanup.
         .replace(/\n{2,}/g, ". ")
         .replace(/\n/g, " ")
-
-        // Clean spacing before punctuation
+        .replace(/[ \t]+/g, " ")
         .replace(/\s+([,.!?;:])/g, "$1")
-
         .trim();
+
+    return cleaned;
 }
 
 async function speakCurrentAnswer() {
@@ -855,23 +1548,26 @@ async function speakCurrentAnswer() {
 
     stopSpeaking();
 
+    const speechText = cleanTextForSpeech(answer);
+
+    console.log("RAW TTS TEXT:", answer);
+    console.log("CLEANED TTS TEXT:", speechText);
+
     try {
         setVoiceActive(true, "Generating voice...");
 
         const response = await fetch("/voice/speak", {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
+            headers: JSON_HEADERS,
             body: JSON.stringify({
-                text: cleanTextForSpeech(answer),
+                text: speechText,
                 voice_id: "selected"
             })
         });
 
         if (!response.ok) {
             const errorText = await response.text();
-            new Error(errorText);
+            throw new Error(errorText);
         }
 
         const blob = await response.blob();
@@ -937,6 +1633,14 @@ async function toggleVoiceInput() {
     if (isRecordingVoice) {
         await stopVoiceInput();
         return;
+    }
+
+    // Barge-in:
+    // If Voxel is currently speaking, immediately interrupt speech
+    // and begin recording the user's new command.
+    if (isSpeakingAnswer || currentTtsAudio || currentPhraseAudio) {
+        stopSpeaking();
+        showToast("Interrupted. Listening...");
     }
 
     await startVoiceInput();
@@ -1274,7 +1978,14 @@ function setMicButtonState(active) {
     }
 
     micButton.classList.toggle("recording", active);
-    micButton.title = active ? "Stop recording" : "Push to talk";
+
+    if (active) {
+        micButton.title = "Stop recording";
+    } else if (isSpeakingAnswer || currentTtsAudio) {
+        micButton.title = "Interrupt and talk";
+    } else {
+        micButton.title = "Push to talk";
+    }
 }
 
 /* ============================================================
@@ -1289,8 +2000,8 @@ async function askVoxel() {
         return;
     }
 
-    setLoading(true, "Searching the web...");
-    setAnswer("Searching...");
+    setLoading(true, "Routing request...");
+    setAnswer("Working...");
     setSources([]);
     setDebug(null);
     setMeta("Working", "0 sources");
@@ -1332,10 +2043,23 @@ async function askVoxel() {
             return;
         }
 
-        if (data.mode === "offline-local") {
+        const backendTotalMs = data?.debug?.latency?.total_ms;
+        const displayElapsed = backendTotalMs !== undefined && backendTotalMs !== null
+            ? `${(backendTotalMs / 1000).toFixed(2)}s`
+            : `${elapsed}s`;
+
+        if (data.mode === "tool") {
+            setAnswer(data.answer || "Tool returned no answer.");
+            setSources([]);
+            setMeta(`Tool · ${data.tool || "unknown"} · ${displayElapsed}`, "0 sources");
+        } else if (data.mode === "offline-local") {
             setAnswer(`[Offline/local mode]\n\n${data.answer || "Voxel returned no answer."}`);
+            setSources(data.sources || []);
+            setMeta(`${data.mode || "Done"} · ${displayElapsed}`, `${(data.sources || []).length} sources`);
         } else {
             setAnswer(data.answer || "Voxel returned no answer.");
+            setSources(data.sources || []);
+            setMeta(`${data.mode || "Done"} · ${displayElapsed}`, `${(data.sources || []).length} sources`);
         }
 
         setSources(data.sources || []);
@@ -1348,7 +2072,7 @@ async function askVoxel() {
 
         showToast("Voxel answered.");
         playVoicePhrase("complete");
-        if (voxelSettings.autoSpeakOnSearch) {
+        if (voxelSettings.autoSpeakOnSearch && !isRecordingVoice) {
             await speakCurrentAnswer();
         }
 
@@ -1567,7 +2291,22 @@ function setSources(sources) {
 
 function setDebug(data) {
     const debugOutput = document.getElementById("debugOutput");
-    debugOutput.textContent = data ? JSON.stringify(data, null, 2) : "No request yet.";
+    const debugSummary = document.getElementById("debugSummary");
+
+    if (debugOutput) {
+        debugOutput.textContent = data ? JSON.stringify(data, null, 2) : "No request yet.";
+    }
+
+    if (!debugSummary) {
+        return;
+    }
+
+    if (!data) {
+        debugSummary.innerHTML = `<div class="empty">No debug data yet.</div>`;
+        return;
+    }
+
+    debugSummary.innerHTML = renderDebugSummary(data);
 }
 
 function setVoiceActive(active, label) {
@@ -1594,6 +2333,191 @@ function showToast(message) {
     window.__voxelToastTimer = setTimeout(() => {
         toast.classList.remove("show");
     }, 1800);
+}
+
+function renderDebugSummary(data) {
+    const debug = data.debug || {};
+    const latency = debug.latency || {};
+    const mode = data.mode || "unknown";
+    const route = debug.route || mode;
+    const tool = data.tool || "none";
+    const sourceCount = Array.isArray(data.sources) ? data.sources.length : 0;
+
+    const lowResource = debug.resource_mode && debug.resource_mode.low_resource_mode
+    ? "on"
+    : "off";
+
+    return `
+        <div class="debug-grid">
+            ${renderDebugCard("Mode", mode)}
+            ${renderDebugCard("Route", route)}
+            ${renderDebugCard("Tool", tool)}
+            ${renderDebugCard("Sources", String(sourceCount))}
+            ${renderDebugCard("Low Resource", lowResource)}
+        </div>
+
+        ${renderLatencyPanel(latency)}
+        ${renderRouteDebugPanel(data)}
+        ${renderToolDebugPanel(debug.tool)}
+        ${renderModelDebugPanel(debug.model)}
+    `;
+}
+
+function renderDebugCard(label, value) {
+    return `
+        <div class="debug-card">
+            <span>${escapeHtml(label)}</span>
+            <strong>${escapeHtml(formatDebugValue(value))}</strong>
+        </div>
+    `;
+}
+
+function renderLatencyPanel(latency) {
+    if (!latency || Object.keys(latency).length === 0) {
+        return `
+            <div class="debug-section">
+                <h4>Latency</h4>
+                <div class="empty">No latency data.</div>
+            </div>
+        `;
+    }
+
+    const rows = [
+        ["Total", latency.total_ms],
+        ["Routing", latency.routing_ms],
+        ["Tool", latency.tool_ms],
+        ["Network check", latency.network_check_ms],
+        ["Search", latency.search_ms],
+        ["AI", latency.ai_ms],
+        ["Storage", latency.storage_ms],
+    ];
+
+    return `
+        <div class="debug-section">
+            <div class="debug-section-title-row">
+                <h4>Latency</h4>
+                <span>${formatDebugValue(latency.total_ms)}ms total</span>
+            </div>
+
+            <div class="latency-list">
+                ${rows.map(([label, value]) => renderLatencyRow(label, value, latency.total_ms)).join("")}
+            </div>
+        </div>
+    `;
+}
+
+function renderLatencyRow(label, value, total) {
+    const skipped = value === null || value === undefined;
+    const displayValue = skipped ? "skipped" : `${value}ms`;
+
+    const percent = !skipped && total
+        ? Math.max(2, Math.min(100, (Number(value) / Number(total)) * 100))
+        : 0;
+
+    return `
+        <div class="latency-row ${skipped ? "skipped" : ""}">
+            <div class="latency-row-top">
+                <span>${escapeHtml(label)}</span>
+                <strong>${escapeHtml(displayValue)}</strong>
+            </div>
+
+            <div class="latency-bar">
+                <div style="width: ${percent}%"></div>
+            </div>
+        </div>
+    `;
+}
+
+function renderRouteDebugPanel(data) {
+    const debug = data.debug || {};
+
+    const rows = [
+        ["Original", debug.original],
+        ["Cleaned", debug.cleaned || data.question],
+        ["Online", debug.online],
+        ["Forced offline", debug.forced_offline],
+        ["Source count", debug.source_count],
+    ];
+
+    const visibleRows = rows.filter(([, value]) => value !== undefined);
+
+    if (!visibleRows.length) {
+        return "";
+    }
+
+    return `
+        <div class="debug-section">
+            <h4>Route</h4>
+            <div class="debug-kv-list">
+                ${visibleRows.map(([key, value]) => renderDebugKeyValue(key, value)).join("")}
+            </div>
+        </div>
+    `;
+}
+
+function renderToolDebugPanel(toolDebug) {
+    if (!toolDebug) {
+        return "";
+    }
+
+    const rows = Object.entries(toolDebug)
+        .map(([key, value]) => renderDebugKeyValue(key, value))
+        .join("");
+
+    return `
+        <div class="debug-section">
+            <h4>Tool Debug</h4>
+            <div class="debug-kv-list">${rows}</div>
+        </div>
+    `;
+}
+
+function renderModelDebugPanel(modelDebug) {
+    if (!modelDebug) {
+        return "";
+    }
+
+    const rows = [
+        ["Model found", modelDebug.model_found],
+        ["Selected model", modelDebug.selected_model],
+        ["Loaded", modelDebug.loaded],
+        ["Loaded model path", modelDebug.loaded_model_path],
+        ["Model path", modelDebug.model_path],
+    ];
+
+    return `
+        <div class="debug-section">
+            <h4>Model</h4>
+            <div class="debug-kv-list">
+                ${rows.map(([key, value]) => renderDebugKeyValue(key, value)).join("")}
+            </div>
+        </div>
+    `;
+}
+
+function renderDebugKeyValue(key, value) {
+    return `
+        <div class="debug-kv-row">
+            <span>${escapeHtml(key)}</span>
+            <strong>${escapeHtml(formatDebugValue(value))}</strong>
+        </div>
+    `;
+}
+
+function formatDebugValue(value) {
+    if (value === null || value === undefined) {
+        return "none";
+    }
+
+    if (typeof value === "boolean") {
+        return value ? "true" : "false";
+    }
+
+    if (typeof value === "object") {
+        return JSON.stringify(value);
+    }
+
+    return String(value);
 }
 
 function escapeHtml(value) {
@@ -1693,7 +2617,7 @@ function renderSafeMarkdown(markdown) {
         .replace(/`([^`]+)`/g, "<code class=\"md-inline-code\">$1</code>")
 
         // Links
-        .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, "<a href=\"$2\" target=\"_blank\" rel=\"noreferrer\">$1</a>")
+        .replace(/\[([^\]]+)]\((https?:\/\/[^\s)]+)\)/g, "<a href=\"$2\" target=\"_blank\" rel=\"noreferrer\">$1</a>")
 
         // Simple unordered lists
         .replace(/^\s*[-*] (.*)$/gm, "<li>$1</li>")

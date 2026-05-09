@@ -56,6 +56,21 @@ def initialize_storage() -> None:
             """
         )
 
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS memories
+            (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                content     TEXT    NOT NULL,
+                memory_type TEXT    NOT NULL DEFAULT 'note',
+                source      TEXT    NOT NULL DEFAULT 'user',
+                enabled     INTEGER NOT NULL DEFAULT 1,
+                created_at  TEXT    NOT NULL,
+                updated_at  TEXT    NOT NULL
+            )
+            """
+        )
+
         connection.commit()
 
 def save_search(
