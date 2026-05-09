@@ -1,0 +1,44 @@
+{
+  "id": "public-en-us-libritts-high",
+  "display_name": "English US - LibriTTS High",
+  "type": "piper",
+  "language": "en-US",
+  "speaker": "multi-speaker",
+  "speaker_count": 904,
+  "accent": "General American",
+  "quality": "high",
+  "sample_rate_hz": 22050,
+  "description": "Public Piper multi-speaker voice based on LibriTTS for offline Voxel speech output.",
+  "version": "0.01",
+  "enabled": true,
+  "public": true,
+  "offline_ready": true,
+
+  "source": "rhasspy/piper-voices",
+  "source_voice": "en_US-libritts-high",
+  "source_dataset": "LibriTTS train-clean-360",
+  "license": "CC BY 4.0",
+  "requires_attribution": true,
+  "redistributable": true,
+  "commercial_use_allowed": true,
+  "attribution": "Voice model from rhasspy/piper-voices, trained from LibriTTS train-clean-360. Dataset license: CC BY 4.0.",
+
+  "files": {
+    "piper_model": "piper/voice.onnx",
+    "piper_config": "piper/voice.onnx.json"
+  },
+
+  "capabilities": {
+    "phrase_pack": false,
+    "piper_tts": true,
+    "can_speak_arbitrary_text": true,
+    "multi_speaker": true
+  },
+
+  "piper": {
+    "default_speaker": 0,
+    "length_scale": 1.0,
+    "noise_scale": 0.667,
+    "noise_w_scale": 0.8
+  }
+}

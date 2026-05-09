@@ -1,0 +1,28 @@
+{
+  "app.subtitle": "v0.01 · Search plus local AI summarizer · no cloud key required.",
+  "status.title": "System Status",
+  "status.description": "Quick diagnostics for the local Voxel runtime.",
+  "status.activeModel": "Active Model",
+  "status.server": "Server",
+  "status.model": "Model",
+  "status.loaded": "Loaded",
+  "status.recentSearches": "Recent Searches",
+  "status.clear": "Clear",
+
+  "ask.title": "Ask Voxel",
+  "ask.description": "Voxel searches the web, then your local model summarizes the results.",
+  "ask.placeholder": "Ask anything...",
+  "ask.search": "Search",
+
+  "answer.title": "Answer",
+  "answer.speak": "Speak",
+  "answer.stop": "Stop",
+  "answer.placeholder": "Ask anything...",
+
+  "sources.title": "Sources",
+  "sources.empty": "No sources yet.",
+
+  "voice.idle": "Voice idle",
+  "toast.historyCleared": "History cleared.",
+  "toast.historyClearFailed": "Could not clear history."
+}

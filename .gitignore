@@ -1,0 +1,221 @@
+# ============================================================
+# Voxel .gitignore
+# Local AI assistant project
+# Keeps secrets, models, caches, generated audio, and local DBs out of Git.
+# ============================================================
+
+
+# ------------------------------------------------------------
+# Python
+# ------------------------------------------------------------
+
+__pycache__/
+*.py[cod]
+*$py.class
+
+.venv/
+venv/
+env/
+ENV/
+
+pip-wheel-metadata/
+*.egg-info/
+.eggs/
+dist/
+build/
+wheels/
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+
+# ------------------------------------------------------------
+# Environment / secrets
+# ------------------------------------------------------------
+
+.env
+.env.*
+!.env.example
+
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+secrets/
+secret/
+private/
+
+
+# ------------------------------------------------------------
+# Voxel local runtime data
+# ------------------------------------------------------------
+
+data/
+logs/
+*.log
+
+# SQLite databases
+*.sqlite
+*.sqlite3
+*.db
+*.db-shm
+*.db-wal
+
+# Generated TTS / transcription files
+*.tmp
+*.temp
+*.wav.tmp
+data/tts/
+data/temp-audio/
+data/voice-cache/
+
+
+# ------------------------------------------------------------
+# AI models - DO NOT COMMIT THESE
+# ------------------------------------------------------------
+
+models/
+*.gguf
+*.bin
+*.safetensors
+*.pt
+*.pth
+*.onnx
+*.onnx.json
+
+# Optional model download folders
+model-cache/
+huggingface/
+.huggingface/
+.cache/huggingface/
+
+
+# ------------------------------------------------------------
+# Voice packs
+# ------------------------------------------------------------
+
+# Keep public metadata/docs, but do not commit heavy voice assets by default.
+voices/**/piper/
+voices/**/wavs/
+voices/**/phrases/
+voices/**/*.wav
+voices/**/*.mp3
+voices/**/*.ogg
+voices/**/*.opus
+voices/**/*.flac
+voices/**/*.onnx
+voices/**/*.onnx.json
+
+# Allow voice metadata to be tracked.
+!voices/**/voice.json
+!voices/**/README.md
+!voices/**/LICENSE
+!voices/**/LICENSE.txt
+!voices/**/ATTRIBUTION.md
+
+
+# ------------------------------------------------------------
+# Imported / downloaded packs
+# ------------------------------------------------------------
+
+*.zip
+*.7z
+*.rar
+*.tar
+*.tar.gz
+
+
+# ------------------------------------------------------------
+# Node / frontend tooling if added later
+# ------------------------------------------------------------
+
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+.vite/
+.next/
+.nuxt/
+
+
+# ------------------------------------------------------------
+# IDEs / editors
+# ------------------------------------------------------------
+
+.idea/
+.vscode/
+*.code-workspace
+
+# JetBrains
+*.iml
+out/
+
+# VS / Rider
+.vs/
+
+# Sublime
+*.sublime-workspace
+*.sublime-project
+
+
+# ------------------------------------------------------------
+# OS junk
+# ------------------------------------------------------------
+
+.DS_Store
+Thumbs.db
+desktop.ini
+
+
+# ------------------------------------------------------------
+# Test / debug artifacts
+# ------------------------------------------------------------
+
+debug/
+tmp/
+temp/
+scratch/
+sandbox/
+
+test-output/
+debug-output/
+
+tts-test.wav
+voice-command.wav
+voice-command.webm
+
+
+# ------------------------------------------------------------
+# Build/package artifacts
+# ------------------------------------------------------------
+
+release/
+releases/
+artifacts/
+packages/
+
+*.exe
+*.msi
+*.dmg
+*.pkg
+*.deb
+*.rpm
+*.AppImage
+
+
+# ------------------------------------------------------------
+# Keep structure placeholders
+# ------------------------------------------------------------
+
+!data/.gitkeep
+!logs/.gitkeep
+!models/.gitkeep
+!voices/.gitkeep

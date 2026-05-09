@@ -1,0 +1,33 @@
+{
+  "id": "public-en-us-ljspeech-high",
+  "display_name": "English US - LJSpeech High",
+  "type": "piper",
+  "language": "en-US",
+  "speaker": "female",
+  "accent": "General American",
+  "quality": "high",
+  "description": "Public-domain Piper voice for Voxel testing and offline speech output.",
+  "version": "0.01",
+  "enabled": true,
+  "public": true,
+  "offline_ready": true,
+
+  "source": "rhasspy/piper-voices",
+  "source_voice": "en_US-ljspeech-high",
+  "source_dataset": "LJ Speech",
+  "license": "Public Domain",
+  "requires_attribution": false,
+  "redistributable": true,
+  "commercial_use_allowed": true,
+
+  "files": {
+    "piper_model": "piper/voice.onnx",
+    "piper_config": "piper/voice.onnx.json"
+  },
+
+  "capabilities": {
+    "phrase_pack": false,
+    "piper_tts": true,
+    "can_speak_arbitrary_text": true
+  }
+}

@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Voxel v0.01</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <link rel="stylesheet" href="/static/styles.css?v=ui-clean-003">
+</head>
+
+<body>
+    <main class="shell">
+        <section class="hero">
+            <div>
+                <div class="brand-row">
+                    <div class="logo">V</div>
+
+                    <div>
+                        <h1>Voxel</h1>
+                        <p class="subtitle" data-i18n="app.subtitle">
+                            v0.01 · Search plus local AI summarizer · no cloud key required.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="pill-row">
+                    <span class="pill">
+                        <span id="serverDot" class="dot warning"></span>
+                        <span id="serverPill">Server unchecked</span>
+                    </span>
+
+                    <span class="pill">
+                        <span id="modelDot" class="dot warning"></span>
+                        <span id="modelPill">Model unchecked</span>
+                    </span>
+
+                    <span class="pill">Localhost: 127.0.0.1:8787</span>
+                </div>
+            </div>
+
+            <div class="top-actions">
+                <button class="secondary" onclick="checkHealth()">Check Server</button>
+                <button class="secondary" onclick="checkModel()">Check Model</button>
+
+                <button class="icon-button" onclick="openSettingsModal()" title="Settings">
+                    <span data-icon="settings"></span>
+                </button>
+            </div>
+        </section>
+
+        <section class="layout">
+            <aside class="card">
+                <div class="card-header">
+                    <h2 class="card-title" data-i18n="status.title">System Status</h2>
+                    <p class="card-description" data-i18n="status.description">
+                        Quick diagnostics for the local Voxel runtime.
+                    </p>
+                </div>
+
+                <div class="card-body">
+                    <div class="model-picker">
+                        <label class="field-label" data-i18n="status.activeModel">Active Model</label>
+
+                        <button id="modelPickerButton" class="model-picker-button" onclick="toggleModelMenu()">
+                            <span id="modelPickerText">Auto</span>
+                            <span class="model-picker-arrow">▾</span>
+                        </button>
+
+                        <div id="modelMenu" class="model-menu hidden">
+                            <button class="model-option" onclick="selectModelByName('auto')">
+                                <span>Auto</span>
+                                <small>Pick first GGUF model</small>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="voice-picker-panel">
+                        <label class="field-label">Active Voice</label>
+
+                        <select id="voiceSelect" class="voxel-select" onchange="selectVoice(this.value)">
+                            <option value="">Loading voices...</option>
+                        </select>
+                    </div>
+
+                    <div class="language-picker-panel">
+                        <label class="field-label">Language</label>
+
+                        <div class="language-buttons">
+                            <button class="micro-button" onclick="setLanguage('en-US')">English</button>
+                        </div>
+                    </div>
+
+                    <details class="personality-panel">
+                        <summary>Personality</summary>
+
+                        <div class="personality-editor">
+                            <textarea id="personalityInput" placeholder="Describe how Voxel should act..."></textarea>
+
+                            <div class="personality-actions">
+                                <button class="micro-button" onclick="savePersonality()">Save</button>
+                                <button class="micro-button" onclick="resetPersonality()">Reset</button>
+                                <button class="micro-button" onclick="loadPersonality()">Reload</button>
+                            </div>
+                        </div>
+                    </details>
+
+                    <div class="status-stack">
+                        <div class="status-item">
+                            <div>
+                                <div class="status-label" data-i18n="status.server">Server</div>
+                                <div class="status-value" id="serverStatus">Unchecked</div>
+                            </div>
+
+                            <span id="serverBadge" class="pill">Waiting</span>
+                        </div>
+
+                        <div class="status-item">
+                            <div>
+                                <div class="status-label" data-i18n="status.model">Model</div>
+                                <div class="status-value" id="modelStatus">Unchecked</div>
+                            </div>
+
+                            <span id="modelBadge" class="pill">Waiting</span>
+                        </div>
+
+                        <div class="status-item">
+                            <div>
+                                <div class="status-label" data-i18n="status.loaded">Loaded</div>
+                                <div class="status-value" id="loadedStatus">False</div>
+                            </div>
+
+                            <span class="pill">GGUF</span>
+                        </div>
+                    </div>
+
+                    <details>
+                        <summary>Raw status JSON</summary>
+                        <pre id="statusOutput">No status checked yet.</pre>
+                    </details>
+
+                    <div class="history-panel">
+                        <div class="mini-title-row">
+                            <h3 class="mini-title" data-i18n="status.recentSearches">Recent Searches</h3>
+                            <button class="micro-button" onclick="clearHistory()" data-i18n="status.clear">Clear</button>
+                        </div>
+
+                        <div id="historyOutput">
+                            <div class="empty">No search history yet.</div>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+
+            <section class="card search-card">
+                <div class="card-header card-header-row">
+                    <div>
+                        <h2 class="card-title" data-i18n="ask.title">Ask Voxel</h2>
+                        <p class="card-description" data-i18n="ask.description">
+                            Voxel searches the web, then your local model summarizes the results.
+                        </p>
+                    </div>
+                
+                    <div class="card-header-actions">
+                        <button class="micro-button" onclick="checkHealth()">Server</button>
+                        <button class="micro-button" onclick="checkModel()">Model</button>
+                    </div>
+                </div>
+
+                <div class="card-body">
+                    <div class="search-box">
+                        <input
+                            id="searchBox"
+                            placeholder="Ask anything..."
+                            data-i18n-placeholder="ask.placeholder"
+                            autocomplete="off"
+                        >
+
+                        <button id="searchButton" onclick="askVoxel()" data-i18n="ask.search">Search</button>
+                    </div>
+
+                    <div id="quickPrompts" class="quick-prompts">
+                        <span class="prompt-chip">Loading suggestions...</span>
+                    </div>
+
+                    <div id="loader" class="loader">
+                        <div class="loader-row">
+                            <div class="spinner"></div>
+                            <span id="loaderText">Searching...</span>
+                        </div>
+                    </div>
+
+                    <div class="answer-panel">
+                        <div class="answer-header">
+                            <span class="answer-title" data-i18n="answer.title">Answer</span>
+
+                            <div class="answer-actions">
+                                <button id="markdownModeButton" class="mode-button selected" onclick="setAnswerRenderMode('markdown')">
+                                    Markdown
+                                </button>
+
+                                <button id="rawModeButton" class="mode-button" onclick="setAnswerRenderMode('raw')">
+                                    Raw
+                                </button>
+
+                                <button id="micButton" class="icon-button" onclick="toggleVoiceInput()" title="Push to talk">
+                                    <span data-icon="mic"></span>
+                                </button>
+
+                                <button class="icon-button" onclick="speakCurrentAnswer()" title="Speak answer">
+                                    <span data-icon="volume"></span>
+                                </button>
+
+                                <button class="icon-button secondary" onclick="stopSpeaking()" title="Stop speaking">
+                                    <span data-icon="stop"></span>
+                                </button>
+
+                                <span id="answerMeta" class="answer-meta">Idle</span>
+                            </div>
+                        </div>
+
+                        <div id="answerOutput" class="answer-body" data-i18n="answer.placeholder">
+                            Ask anything...
+                        </div>
+
+                        <div class="voice-panel">
+                            <div class="voice-info">
+                                <span id="voiceStatus" data-i18n="voice.idle">Voice idle</span>
+                            </div>
+
+                            <div id="equalizer" class="equalizer">
+                                <span style="--i: 1"></span>
+                                <span style="--i: 2"></span>
+                                <span style="--i: 3"></span>
+                                <span style="--i: 4"></span>
+                                <span style="--i: 5"></span>
+                                <span style="--i: 6"></span>
+                                <span style="--i: 7"></span>
+                                <span style="--i: 8"></span>
+                                <span style="--i: 9"></span>
+                                <span style="--i: 10"></span>
+                                <span style="--i: 11"></span>
+                                <span style="--i: 12"></span>
+                                <span style="--i: 13"></span>
+                                <span style="--i: 14"></span>
+                                <span style="--i: 15"></span>
+                                <span style="--i: 16"></span>
+                                <span style="--i: 17"></span>
+                                <span style="--i: 18"></span>
+                                <span style="--i: 19"></span>
+                                <span style="--i: 20"></span>
+                                <span style="--i: 21"></span>
+                                <span style="--i: 22"></span>
+                                <span style="--i: 23"></span>
+                                <span style="--i: 24"></span>
+                                <span style="--i: 25"></span>
+                                <span style="--i: 26"></span>
+                                <span style="--i: 27"></span>
+                                <span style="--i: 28"></span>
+                                <span style="--i: 29"></span>
+                                <span style="--i: 30"></span>
+                                <span style="--i: 31"></span>
+                                <span style="--i: 32"></span>
+                                <span style="--i: 33"></span>
+                                <span style="--i: 34"></span>
+                                <span style="--i: 35"></span>
+                                <span style="--i: 36"></span>
+                                <span style="--i: 37"></span>
+                                <span style="--i: 38"></span>
+                                <span style="--i: 39"></span>
+                                <span style="--i: 40"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="answer-panel">
+                        <div class="answer-header">
+                            <span class="answer-title" data-i18n="sources.title">Sources</span>
+                            <span id="sourcesMeta" class="answer-meta">0 sources</span>
+                        </div>
+
+                        <div id="sourcesOutput" class="card-body">
+                            <div class="empty" data-i18n="sources.empty">No sources yet.</div>
+                        </div>
+                    </div>
+
+                    <details>
+                        <summary>Debug JSON</summary>
+                        <pre id="debugOutput">No request yet.</pre>
+                    </details>
+                </div>
+            </section>
+        </section>
+    </main>
+
+    <div id="settingsBackdrop" class="modal-backdrop hidden" onclick="closeSettingsModalFromBackdrop(event)">
+        <section class="settings-modal">
+            <div class="settings-header">
+                <div>
+                    <h2>Settings</h2>
+                    <p>Configure Voxel’s local assistant behavior.</p>
+                </div>
+
+                <button class="icon-button secondary" onclick="closeSettingsModal()" title="Close settings">
+                    <span data-icon="x"></span>
+                </button>
+            </div>
+
+            <div class="settings-grid">
+                <section class="settings-section">
+                    <h3>Voice</h3>
+
+                    <label class="toggle-row">
+                        <span>
+                            <strong>Auto speak on search</strong>
+                            <small>Automatically read the answer after Voxel finishes.</small>
+                        </span>
+
+                        <input id="autoSpeakToggle" type="checkbox" onchange="saveSettingsFromUi()">
+                    </label>
+
+                    <label class="toggle-row">
+                        <span>
+                            <strong>Auto submit voice command</strong>
+                            <small>After transcription, immediately ask Voxel.</small>
+                        </span>
+
+                        <input id="autoSubmitVoiceToggle" type="checkbox" onchange="saveSettingsFromUi()">
+                    </label>
+
+                    <div class="settings-field">
+                        <div class="settings-field-header">
+                            <label for="voiceZipInput">Import Voice Pack</label>
+                        </div>
+
+                        <input id="voiceZipInput" class="file-input" type="file" accept=".zip">
+
+                        <div class="settings-actions">
+                            <button class="secondary" onclick="importVoiceZip()">Import ZIP</button>
+                        </div>
+
+                        <p class="settings-help">
+                            Import a Voxel voice pack containing voice.json and either piper/ or wavs/.
+                        </p>
+                    </div>
+                </section>
+
+                <section class="settings-section">
+                    <h3>Answer Display</h3>
+
+                    <label class="toggle-row">
+                        <span>
+                            <strong>Show Debug JSON</strong>
+                            <small>Keep the debug panel visible while testing.</small>
+                        </span>
+
+                        <input id="showDebugToggle" type="checkbox" onchange="saveSettingsFromUi()">
+                    </label>
+
+                    <label class="toggle-row">
+                        <span>
+                            <strong>Prefer offline/local mode</strong>
+                            <small>Use local answers first when possible. Hooked up later.</small>
+                        </span>
+
+                        <input id="preferOfflineToggle" type="checkbox" onchange="saveSettingsFromUi()">
+                    </label>
+                </section>
+
+                <section class="settings-section">
+                    <h3>AI Providers</h3>
+                
+                    <div class="settings-field">
+                        <div class="settings-field-header">
+                            <label for="activeProviderSelect">Active Provider</label>
+                        </div>
+
+                        <select id="activeProviderSelect" class="settings-select" onchange="saveActiveProvider()">
+                            <option value="local">Local AI</option>
+                            <option value="openai">OpenAI</option>
+                            <option value="openrouter">OpenRouter</option>
+                            <option value="gemini">Google Gemini</option>
+                        </select>
+
+                        <p class="settings-help">
+                            Local AI needs no key. Cloud providers require your own API key.
+                        </p>
+                    </div>
+
+                    <div class="api-key-list">
+                        <div class="api-key-card">
+                            <div>
+                                <strong>OpenAI</strong>
+                                <small id="openaiKeyStatus">No key saved</small>
+                            </div>
+
+                            <div class="api-key-actions">
+                                <input id="openaiApiKeyInput" class="api-key-input" type="password" placeholder="OpenAI API key">
+                                <button class="micro-button" onclick="saveApiKey('openai', 'openaiApiKeyInput')">Save</button>
+                                <button class="micro-button" onclick="clearApiKey('openai')">Clear</button>
+                            </div>
+                        </div>
+
+                        <div class="api-key-card">
+                            <div>
+                                <strong>OpenRouter</strong>
+                                <small id="openrouterKeyStatus">No key saved</small>
+                            </div>
+
+                            <div class="api-key-actions">
+                                <input id="openrouterApiKeyInput" class="api-key-input" type="password" placeholder="OpenRouter API key">
+                                <button class="micro-button" onclick="saveApiKey('openrouter', 'openrouterApiKeyInput')">Save</button>
+                                <button class="micro-button" onclick="clearApiKey('openrouter')">Clear</button>
+                            </div>
+                        </div>
+
+                        <div class="api-key-card">
+                            <div>
+                                <strong>Google Gemini</strong>
+                                <small id="geminiKeyStatus">No key saved</small>
+                            </div>
+
+                            <div class="api-key-actions">
+                                <input id="geminiApiKeyInput" class="api-key-input" type="password" placeholder="Gemini API key">
+                                <button class="micro-button" onclick="saveApiKey('gemini', 'geminiApiKeyInput')">Save</button>
+                                <button class="micro-button" onclick="clearApiKey('gemini')">Clear</button>
+                            </div>
+                        </div>
+                    </div>
+                    <p id="secretBackendStatus" class="settings-help">
+                        Secret backend: checking...
+                    </p>
+                </section>
+
+                <section class="settings-section">
+                    <h3>Caches</h3>
+
+                    <div id="cacheStatusList" class="cache-list">
+                        <div class="empty">Cache status not loaded yet.</div>
+                    </div>
+
+                    <div class="settings-actions">
+                        <button class="secondary" onclick="loadCacheStatus()">Refresh Cache Status</button>
+                        <button class="secondary danger-button" onclick="clearVoxelCache('tts')">Clear Voice Cache</button>
+                        <button class="secondary danger-button" onclick="clearVoxelCache('all')">Clear All Caches</button>
+                    </div>
+
+                    <p class="settings-help">
+                        This only clears generated/cache files. It does not delete installed voices, models, search history, or API keys.
+                    </p>
+                </section>
+
+                <section class="settings-section">
+                    <h3>Runtime</h3>
+
+                    <div class="settings-actions">
+                        <button class="secondary" onclick="checkHealth()">Check Server</button>
+                        <button class="secondary" onclick="checkModel()">Check Model</button>
+                        <button class="secondary" onclick="loadVoices()">Reload Voices</button>
+                    </div>
+                </section>
+            </div>
+        </section>
+    </div>
+    <div id="toast" class="toast"></div>
+
+    <script src="/static/app.js?v=voice-piper-002"></script>
+</body>
+</html>

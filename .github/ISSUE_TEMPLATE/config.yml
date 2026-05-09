@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Support guide
+    url: https://docs.github.com/en/issues/tracking-your-work-with-issues/about-issues
+    about: Use the Support Question issue template in this repository for help.
+  - name: Security policy
+    url: https://docs.github.com/en/code-security/getting-started/adding-a-security-policy-to-your-repository
+    about: Report sensitive vulnerabilities using the repository security process.

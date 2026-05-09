@@ -1,0 +1,6 @@
+fastapi
+uvicorn[standard]
+ddgs
+llama-cpp-python
+faster-whisper
+pydantic
